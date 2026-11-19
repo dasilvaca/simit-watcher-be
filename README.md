@@ -68,8 +68,10 @@ after every core change.
   (opt-in, one attempt, never in the normal suite). Verified 2026-11-18: SIMIT accepts the proof
   of work; the empty response is `fixtures/no_fines.json`. A lookup returns `multas`,
   `comparendos`, `resoluciones`, `acuerdosPago`, `cursos` and totals.
-- **Big records are slow.** ABC123 returns 1,050 records (1.9 MB) in ~20 s, longer than the
-  default 10 s `http_timeout_ms` and the iOS background budget. Parsing them takes ~33 ms.
+- **Big records are slow.** ABC123 returns 1,050 records (1.9 MB) in ~20 s; parsing takes
+  ~33 ms. So a plate's first lookup (its baseline) gets `first_check_timeout_ms` (30 s, capped by
+  the budget left); every later lookup keeps `http_timeout_ms` (10 s), since between periodic
+  checks a record only changes by a few fines.
 - **SIMIT response format.** Confirmed with real data (`fixtures/real_three_fines.json`); the
   remaining synthetic fixtures still use guessed field names in places (the page reads `multas`, `infracciones[].codigoInfraccion`,
   `numeroComparendo` and `personasMismoDocumento`, which matches). Record a real response for your

@@ -138,7 +138,13 @@ impl SimitClient {
         }
     }
 
-    pub fn build_request(&self, plate: &str, solutions: &[pow::Solution]) -> HttpRequest {
+    /// `timeout_ms` overrides the client's default (used for a plate's first check).
+    pub fn build_request(
+        &self,
+        plate: &str,
+        solutions: &[pow::Solution],
+        timeout_ms: Option<u32>,
+    ) -> HttpRequest {
         let response = serde_json::to_string(solutions).expect("plain structs");
         let body = serde_json::json!({
             "filtro": plate,
@@ -156,7 +162,7 @@ impl SimitClient {
                 Self::header("User-Agent", &self.user_agent),
             ],
             body: Some(serde_json::to_vec(&body).expect("static json")),
-            timeout_ms: self.timeout_ms,
+            timeout_ms: timeout_ms.unwrap_or(self.timeout_ms).max(self.timeout_ms),
         }
     }
 
@@ -183,11 +189,18 @@ impl SimitClient {
     }
 
     /// Looks up one plate: fetch a question, solve it, then query. `now` (unix seconds) is the
-    /// `time` the solution is bound to. Never retries; the check runner owns retries and backoff.
-    pub fn lookup(&self, plate: &str, now: i64) -> Result<Vec<SimitFine>, LookupError> {
+    /// `time` the solution is bound to. `timeout_ms` overrides the lookup timeout (never below the
+    /// default; the question request always uses the default). Never retries; the check runner
+    /// owns retries and backoff.
+    pub fn lookup(
+        &self,
+        plate: &str,
+        now: i64,
+        timeout_ms: Option<u32>,
+    ) -> Result<Vec<SimitFine>, LookupError> {
         let question = self.question()?;
         let solutions = pow::solve(&question, now, self.captcha_difficulty);
-        let resp = self.send(self.build_request(plate, &solutions))?;
+        let resp = self.send(self.build_request(plate, &solutions, timeout_ms))?;
         parse::parse_lookup(&resp.body, plate).map_err(|e| match e {
             parse::ParseError::Captcha => LookupError::new(ErrorClass::Blocked, Some(resp.status)),
             parse::ParseError::Shape(_) => LookupError::new(ErrorClass::Parse, Some(resp.status)),

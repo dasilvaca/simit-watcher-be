@@ -59,7 +59,12 @@ pub struct CoreConfig {
     /// Proof-of-work solutions per lookup; 0 uses the page's default (1).
     pub captcha_difficulty: u32,
     pub user_agent: String,
+    /// Timeout for every request except a plate's first lookup.
     pub http_timeout_ms: u32,
+    /// Timeout for a plate's first lookup, which can return its whole history (a plate with
+    /// ~1,000 records takes SIMIT ~20 s). Capped by the run's budget left; never below
+    /// `http_timeout_ms`.
+    pub first_check_timeout_ms: u32,
     pub jitter_min_ms: u32,
     pub jitter_max_ms: u32,
     pub retry_backoff_ms: Vec<u32>,
@@ -76,6 +81,7 @@ pub fn default_config(db_path: String, user_agent: String) -> CoreConfig {
         captcha_difficulty: 0,
         user_agent,
         http_timeout_ms: 10_000,
+        first_check_timeout_ms: 30_000,
         jitter_min_ms: 400,
         jitter_max_ms: 1_800,
         retry_backoff_ms: vec![1_500, 4_000],
@@ -235,6 +241,7 @@ impl SappaCore {
                 jitter_max_ms: config.jitter_max_ms as u64,
                 retry_backoff_ms: config.retry_backoff_ms.iter().map(|b| *b as u64).collect(),
                 min_plate_budget_ms: config.min_plate_budget_ms as u64,
+                first_check_timeout_ms: config.first_check_timeout_ms as u64,
             },
         }))
     }

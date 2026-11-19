@@ -102,8 +102,7 @@ fn live_check(plate: &str) -> Vec<Fine> {
     });
     let mut cfg = default_config(db, "SAPPA/0.1 (live test)".into());
     cfg.retry_backoff_ms = vec![]; // one attempt only: be polite
-    // Plates with a long record can take SIMIT longer than the app's 10 s.
-    cfg.http_timeout_ms = 30_000;
+    // A fresh database, so this is the plate's first check: it gets `first_check_timeout_ms`.
     let core = SappaCore::new(cfg, transport).unwrap();
     core.add_vehicle(plate.clone(), kind, None, now()).unwrap();
 

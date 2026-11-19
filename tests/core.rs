@@ -32,6 +32,8 @@ struct FakeSimit {
     questions: Mutex<Vec<Result<HttpResponse, TransportError>>>,
     question_calls: Mutex<usize>,
     calls: Mutex<Vec<String>>,
+    /// `timeout_ms` of each lookup request, in order.
+    timeouts: Mutex<Vec<(String, u32)>>,
 }
 
 impl FakeSimit {
@@ -43,6 +45,13 @@ impl FakeSimit {
     }
     fn calls(&self) -> usize {
         self.calls.lock().unwrap().len()
+    }
+    fn timeouts(&self, plate: &str) -> Vec<u32> {
+        let all = self.timeouts.lock().unwrap();
+        all.iter()
+            .filter(|(p, _)| p == plate)
+            .map(|(_, t)| *t)
+            .collect()
     }
     fn question_calls(&self) -> usize {
         *self.question_calls.lock().unwrap()
@@ -72,6 +81,10 @@ impl HttpTransport for FakeSimit {
         if request.url == CAPTCHA_URL {
             let text = String::from_utf8(raw).unwrap();
             assert!(text.contains("name=\"endpoint\"\r\n\r\nquestion\r\n"));
+            assert_eq!(
+                request.timeout_ms, 10_000,
+                "question always uses the normal timeout"
+            );
             *self.question_calls.lock().unwrap() += 1;
             let mut q = self.questions.lock().unwrap();
             return match q.len() {
@@ -83,6 +96,10 @@ impl HttpTransport for FakeSimit {
         let body: serde_json::Value = serde_json::from_slice(&raw).unwrap();
         assert_valid_proof(&body);
         let plate = body["filtro"].as_str().unwrap().to_string();
+        self.timeouts
+            .lock()
+            .unwrap()
+            .push((plate.clone(), request.timeout_ms));
         self.calls.lock().unwrap().push(plate.clone());
         let mut map = self.responses.lock().unwrap();
         let q = map.get_mut(&plate).expect("unexpected plate");
@@ -432,6 +449,43 @@ fn every_lookup_solves_a_fresh_question() {
     assert_eq!(r.result, RunResult::Ok);
     // The fake transport rejects any lookup without a valid proof for the question it served.
     assert_eq!((e.simit.question_calls(), e.simit.calls()), (2, 2));
+}
+
+/// Only a plate's first check may wait long (it can bring the whole history at once); after
+/// that a slow answer is a failure like any other.
+#[test]
+fn longer_timeout_only_until_the_first_check_succeeds() {
+    let e = env();
+    e.core
+        .add_vehicle("AAA111".into(), VehicleKind::Car, None, NOW)
+        .unwrap();
+
+    // First check times out: the baseline is still pending, so the next try also waits long.
+    e.simit.set("AAA111", vec![Err(TransportError::Timeout)]);
+    e.core.run_check(NOW, CheckTrigger::Manual, 60_000).unwrap();
+    e.simit.set("AAA111", vec![ok("no_fines.json")]);
+    let r = e
+        .core
+        .run_check(NOW + 11 * 60, CheckTrigger::Manual, 60_000)
+        .unwrap();
+    assert_eq!(r.result, RunResult::Ok);
+    // Baseline done: back to the normal timeout.
+    e.core
+        .run_check(NOW + 22 * 60, CheckTrigger::Manual, 60_000)
+        .unwrap();
+    assert_eq!(e.simit.timeouts("AAA111"), vec![30_000, 30_000, 10_000]);
+
+    // A new plate in a short (background-sized) run: capped by the budget left, never below 10 s.
+    e.core
+        .add_vehicle("BBB222".into(), VehicleKind::Car, None, NOW)
+        .unwrap();
+    e.simit.set("BBB222", vec![ok("no_fines.json")]);
+    e.core
+        .run_check(NOW + 33 * 60, CheckTrigger::Manual, 15_000)
+        .unwrap();
+    let t = e.simit.timeouts("BBB222")[0];
+    assert!(t > 10_000 && t <= 15_000, "got {t}");
+    assert_eq!(e.simit.timeouts("AAA111").last(), Some(&10_000));
 }
 
 #[test]

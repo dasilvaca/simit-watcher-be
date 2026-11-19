@@ -32,6 +32,10 @@ pub struct RunnerConfig {
     pub retry_backoff_ms: Vec<u64>,
     /// Do not start a plate with less than this left in the budget.
     pub min_plate_budget_ms: u64,
+    /// Lookup timeout for a plate's first (baseline) check, which may bring its whole history at
+    /// once. Capped by the budget left. Later checks use the normal HTTP timeout: SIMIT answers
+    /// fast for small changes, and a slow answer then is a real failure.
+    pub first_check_timeout_ms: u64,
 }
 
 struct Budget {
@@ -126,12 +130,20 @@ pub fn run(
             break;
         }
 
-        let mut result = client.lookup(&t.plate, now + (budget.elapsed_ms() / 1000) as i64);
+        let lookup = || {
+            let timeout = (!t.baseline_done).then(|| {
+                cfg.first_check_timeout_ms
+                    .min(budget.left_ms())
+                    .min(u32::MAX as u64) as u32
+            });
+            client.lookup(&t.plate, now + (budget.elapsed_ms() / 1000) as i64, timeout)
+        };
+        let mut result = lookup();
         for backoff in &cfg.retry_backoff_ms {
             match &result {
                 Err(e) if e.retryable() && budget.left_ms() > backoff + cfg.min_plate_budget_ms => {
                     sleep_ms(*backoff);
-                    result = client.lookup(&t.plate, now + (budget.elapsed_ms() / 1000) as i64);
+                    result = lookup();
                 }
                 _ => break,
             }
