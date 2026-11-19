@@ -72,7 +72,27 @@ impl HttpTransport for CurlTransport {
 #[test]
 #[ignore = "calls the live SIMIT site; run by hand with SAPPA_LIVE_PLATE"]
 fn live_lookup() {
-    let plate = std::env::var("SAPPA_LIVE_PLATE").expect("set SAPPA_LIVE_PLATE");
+    live_check(&std::env::var("SAPPA_LIVE_PLATE").expect("set SAPPA_LIVE_PLATE"));
+}
+
+/// Fixed car plate, so a live run needs no env var:
+/// `cargo test --test live live_lookup_abc123 -- --ignored --nocapture`.
+#[test]
+#[ignore = "calls the live SIMIT site"]
+fn live_lookup_abc123() {
+    let fines = live_check("ABC123");
+    assert!(fines.iter().all(|f| f.plate == "ABC123"));
+    assert!(
+        fines
+            .iter()
+            .all(|f| f.amount >= 0 && !f.simit_ref.is_empty())
+    );
+}
+
+/// One lookup for `plate` (no retries); asserts it succeeded and prints what was parsed
+/// (masked plate, codes and amounts only, no personal data).
+fn live_check(plate: &str) -> Vec<Fine> {
+    let plate = plate.to_string();
     let kind = detect_vehicle_kind(plate.clone()).expect("valid plate");
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("live.sqlite").to_string_lossy().to_string();
@@ -82,10 +102,12 @@ fn live_lookup() {
     });
     let mut cfg = default_config(db, "SAPPA/0.1 (live test)".into());
     cfg.retry_backoff_ms = vec![]; // one attempt only: be polite
+    // Plates with a long record can take SIMIT longer than the app's 10 s.
+    cfg.http_timeout_ms = 30_000;
     let core = SappaCore::new(cfg, transport).unwrap();
     core.add_vehicle(plate.clone(), kind, None, now()).unwrap();
 
-    let r = core.run_check(now(), CheckTrigger::Manual, 30_000).unwrap();
+    let r = core.run_check(now(), CheckTrigger::Manual, 60_000).unwrap();
     eprintln!("result: {:?}, error: {:?}", r.result, r.error);
     for o in &r.outcomes {
         eprintln!(
@@ -109,6 +131,7 @@ fn live_lookup() {
             f.discount.business_days_left
         );
     }
+    fines
 }
 
 fn now() -> i64 {

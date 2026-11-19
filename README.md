@@ -64,11 +64,14 @@ after every core change.
 ## Open questions
 
 - **Live check:** `SAPPA_LIVE_PLATE=ABC123 cargo test --test live -- --ignored --nocapture`
+  or `cargo test --test live live_lookup_abc123 -- --ignored --nocapture`
   (opt-in, one attempt, never in the normal suite). Verified 2026-11-18: SIMIT accepts the proof
   of work; the empty response is `fixtures/no_fines.json`. A lookup returns `multas`,
   `comparendos`, `resoluciones`, `acuerdosPago`, `cursos` and totals.
-- **SIMIT response format.** The endpoint, request and empty response are confirmed; the field
-  names inside a fine are still a guess (the page reads `multas`, `infracciones[].codigoInfraccion`,
+- **Big records are slow.** ABC123 returns 1,050 records (1.9 MB) in ~20 s, longer than the
+  default 10 s `http_timeout_ms` and the iOS background budget. Parsing them takes ~33 ms.
+- **SIMIT response format.** Confirmed with real data (`fixtures/real_three_fines.json`); the
+  remaining synthetic fixtures still use guessed field names in places (the page reads `multas`, `infracciones[].codigoInfraccion`,
   `numeroComparendo` and `personasMismoDocumento`, which matches). Record a real response for your
   own plate and replace the fixtures. SIMIT's terms of use for automated lookups are not reviewed.
 - Discount windows use Art. 136 CNT (5 / 20 business days from the comparendo, or from

@@ -159,6 +159,47 @@ fn parses_fixtures() {
     );
 }
 
+/// Three records from a real lookup of ABC123 (2026-11-18), owner data replaced with fakes.
+#[test]
+fn parses_real_response() {
+    let f = sappa_core::simit::parse::parse_lookup(&fixture("real_three_fines.json"), "ABC123")
+        .unwrap();
+    let got: Vec<_> = f
+        .iter()
+        .map(|f| {
+            (
+                f.simit_ref.as_str(),
+                f.infraction_code.as_str(),
+                f.amount,
+                f.status,
+            )
+        })
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            ("76111000000012828297", "D01", 742_730, FineStatus::Pending),
+            (
+                "50006000000024802724",
+                "D02",
+                1_579_585,
+                FineStatus::Pending
+            ),
+            ("11001000000035192319", "H02", 0, FineStatus::Pending),
+        ]
+    );
+    assert_eq!(f[0].place.as_deref(), Some("Buga"));
+    assert!(
+        f[0].infraction_description
+            .as_deref()
+            .unwrap()
+            .starts_with("Guiar un vehículo sin haber obtenido la licencia")
+    );
+    // 20/02/2017 12:29 Bogotá (UTC-5).
+    assert_eq!(f[0].issued_at, 1_487_611_740);
+    assert!(f.iter().all(|f| f.notified_at.is_none()));
+}
+
 #[test]
 fn vehicles_validate_and_dedupe() {
     let e = env();

@@ -15,5 +15,6 @@ tests keep passing against real data. A failing parser test after a re-record me
 | `one_pending_updated_plus_new.json` | Same fine with new amount, plus a new D12 fine |
 | `no_fines.json` | **Real** response for a plate with nothing pending (live, 2026-11-18) |
 | `question.json` | Proof-of-work question, real shape (from browser traffic) |
+| `real_three_fines.json` | **Real** records from a live ABC123 lookup (2026-11-18): a pending comparendo, one in cobro coactivo, one at $0 pending a course. Owner name and ID replaced |
 | `captcha.html` | Human verification page instead of JSON |
 | `unexpected_shape.json` | JSON the parser does not recognise (site changed) |
