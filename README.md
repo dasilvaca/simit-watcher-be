@@ -17,7 +17,7 @@ Federación Colombiana de Municipios.
 | `src/store.rs` | SQLite: WAL, busy timeout, numbered migrations (`PRAGMA user_version`) |
 | `src/runner.rs` | `run_check`: idempotent, resumable, jitter, retries, stop on block, checks-failing alert |
 | `src/lib.rs` | Public API (`SappaCore` object + free functions) |
-| `fixtures/` | SIMIT responses used by tests (currently **synthetic**, see `fixtures/README.md`) |
+| `fixtures/` | SIMIT responses used by tests (partly real, partly synthetic: see `fixtures/README.md`) |
 | `tests/core.rs` | End-to-end API tests with a fake transport |
 
 ## Build and test
@@ -63,8 +63,12 @@ after every core change.
 
 ## Open questions
 
-- **SIMIT response format.** The endpoint and request are confirmed; the lookup *response* field
-  names are still a guess (the page reads `multas`, `infracciones[].codigoInfraccion`,
+- **Live check:** `SAPPA_LIVE_PLATE=ABC123 cargo test --test live -- --ignored --nocapture`
+  (opt-in, one attempt, never in the normal suite). Verified 2026-11-18: SIMIT accepts the proof
+  of work; the empty response is `fixtures/no_fines.json`. A lookup returns `multas`,
+  `comparendos`, `resoluciones`, `acuerdosPago`, `cursos` and totals.
+- **SIMIT response format.** The endpoint, request and empty response are confirmed; the field
+  names inside a fine are still a guess (the page reads `multas`, `infracciones[].codigoInfraccion`,
   `numeroComparendo` and `personasMismoDocumento`, which matches). Record a real response for your
   own plate and replace the fixtures. SIMIT's terms of use for automated lookups are not reviewed.
 - Discount windows use Art. 136 CNT (5 / 20 business days from the comparendo, or from

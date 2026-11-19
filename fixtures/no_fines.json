@@ -1,1 +1,1 @@
-{ "multas": [], "totalGeneral": 0 }
+{"multas":[],"resoluciones":[],"comparendos":[],"personasMismoDocumento":[],"pazSalvo":false,"totalGeneral":0,"totalMultas":0,"totalAp":0,"paramEntradaPlaca":true,"cancelada":false,"suspendida":false,"fechaDesdeCancelSuspen":null,"fechaHastaSuspencion":null,"organismoTransitoCancelSuspen":null,"cursos":[],"acuerdosPago":[],"totalMultasPagar":0,"cantMultasPagar":0,"totalAcuerdosPagar":0,"cantAcuerdosPagar":0,"mensajeValidacionPagoPlaca":"¿Está seguro que desea pagar?"}
