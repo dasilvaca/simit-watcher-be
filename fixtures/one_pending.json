@@ -1,0 +1,21 @@
+{
+  "multas": [
+    {
+      "numeroComparendo": "11001000000045678901",
+      "placa": "TTO08G",
+      "fechaComparendo": "13/11/2026",
+      "estadoComparendo": "Pendiente",
+      "organismoTransito": "Secretaría de Movilidad de Bogotá",
+      "ciudad": "Bogotá D.C.",
+      "valorPagar": 604200,
+      "infracciones": [
+        {
+          "codigoInfraccion": "C02",
+          "descripcionInfraccion": "Estacionar un vehículo en sitios prohibidos.",
+          "valorInfraccion": 604200
+        }
+      ]
+    }
+  ],
+  "totalGeneral": 604200
+}

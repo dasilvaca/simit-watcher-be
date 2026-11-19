@@ -1,0 +1,24 @@
+{
+  "multas": [
+    {
+      "numeroComparendo": "11001000000045678901",
+      "placa": "TTO08G",
+      "fechaComparendo": "13/11/2026",
+      "estadoComparendo": "Pendiente",
+      "ciudad": "Bogotá D.C.",
+      "valorPagar": "$ 650.000",
+      "infracciones": [{ "codigoInfraccion": "C02", "descripcionInfraccion": "Estacionar un vehículo en sitios prohibidos." }]
+    },
+    {
+      "numeroComparendo": "05001000000011112222",
+      "placa": "TTO08G",
+      "fechaComparendo": "2026-11-17T08:30:00",
+      "fechaNotificacion": "2026-11-18",
+      "estadoComparendo": "Pendiente",
+      "ciudad": "Medellín",
+      "valorPagar": 1423500,
+      "infracciones": [{ "codigoInfraccion": "D12", "descripcionInfraccion": "Conducir un vehículo que, sin la debida autorización, se destine a un servicio diferente." }]
+    }
+  ],
+  "totalGeneral": 2073500
+}

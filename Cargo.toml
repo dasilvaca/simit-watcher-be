@@ -1,0 +1,37 @@
+[package]
+name = "sappa_core"
+version = "0.1.0"
+edition = "2024"
+description = "SAPPA shared core: SIMIT lookup, parsing, change detection and on-device SQLite store."
+publish = false
+
+[lib]
+crate-type = ["lib", "staticlib"]
+name = "sappa_core"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli"]
+
+[dependencies]
+uniffi = "0.32"
+rusqlite = { version = "0.43", features = ["bundled"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+thiserror = "2"
+fastrand = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = "debuginfo"
