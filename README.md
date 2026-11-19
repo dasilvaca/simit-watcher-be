@@ -25,13 +25,25 @@ Federación Colombiana de Municipios.
 ```sh
 cargo test                 # unit + integration tests, never hits SIMIT
 cargo clippy --all-targets
-scripts/build-ios.sh       # static libs + xcframework + Swift bindings, copies bindings into ../Sappa
+scripts/build-ios.sh       # xcframework + Swift bindings for the SappaCore Swift package
 ```
 
 Requires rustup (`brew install rustup`, then `rustup default stable`). The script adds the iOS
-targets. The Xcode project links `dist/ios/<platform>/libsappa_core.a` and imports the
-`sappa_coreFFI` module from `dist/ios/include`, so run the script before building the app and
-after every core change.
+targets.
+
+### Swift package
+
+This repo is also the Swift package **SappaCore** (`Package.swift`, iOS 26+):
+
+- binary target `sappa_coreFFI` = `dist/ios/SappaCore.xcframework` (static Rust library + C header
+  and module map);
+- Swift target `SappaCore` = `swift/Sources/SappaCore/SappaCore.swift`, the generated UniFFI API
+  (committed; never edit by hand).
+
+Apps add it as a local package (`../sappa_be`) and `import SappaCore`. The xcframework is not
+committed (`dist/` is ignored), so run `scripts/build-ios.sh` before building the app and after
+every core change. To use it as a remote package later, publish the zipped xcframework as a
+release asset and switch the binary target to `url:` + `checksum:`.
 
 ## Rules
 
