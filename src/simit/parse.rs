@@ -201,6 +201,23 @@ fn parse_fine(item: &Value) -> Result<SimitFine, ParseError> {
 }
 
 /// Parses a lookup response. Returns only fines for `plate` when items carry a plate.
+/// Reads the captcha service answer `{"error": false, "data": {"question": "<hex>", …}}`.
+/// `error: true` means the service refused us, which is treated like a block.
+pub fn parse_question(body: &[u8]) -> Result<String, ParseError> {
+    let v: Value = serde_json::from_slice(body).map_err(|e| ParseError::Shape(e.to_string()))?;
+    if v.get("error").and_then(Value::as_bool) == Some(true) {
+        return Err(ParseError::Captcha);
+    }
+    let q = v
+        .pointer("/data/question")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ParseError::Shape("no data.question".into()))?;
+    if q.is_empty() || q.len() > 256 || !q.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err(ParseError::Shape("bad question".into()));
+    }
+    Ok(q.to_string())
+}
+
 pub fn parse_lookup(body: &[u8], plate: &str) -> Result<Vec<SimitFine>, ParseError> {
     let text = String::from_utf8_lossy(body);
     let value: Value = match serde_json::from_str(&text) {
@@ -285,6 +302,31 @@ mod tests {
         assert_eq!(parse_date(&json!("13/11/2026 12:00:00")), Some(noon));
         assert_eq!(parse_date(&json!(noon * 1000)), Some(noon));
         assert_eq!(parse_date(&json!("ayer")), None);
+    }
+
+    #[test]
+    fn question() {
+        let ok = br#"{"error":false,"data":{"question":"51105c0550b068e4620513eea19d07a3","recommended_difficulty":2}}"#;
+        assert_eq!(
+            parse_question(ok).unwrap(),
+            "51105c0550b068e4620513eea19d07a3"
+        );
+        assert_eq!(
+            parse_question(br#"{"error":true,"data":null}"#),
+            Err(ParseError::Captcha)
+        );
+        assert!(matches!(
+            parse_question(br#"{"error":false,"data":{}}"#),
+            Err(ParseError::Shape(_))
+        ));
+        assert!(matches!(
+            parse_question(br#"{"error":false,"data":{"question":"a\"b"}}"#),
+            Err(ParseError::Shape(_))
+        ));
+        assert!(matches!(
+            parse_question(b"<html>"),
+            Err(ParseError::Shape(_))
+        ));
     }
 
     #[test]

@@ -20,10 +20,17 @@ fn ok(name: &str) -> Result<HttpResponse, TransportError> {
     })
 }
 
+const CAPTCHA_URL: &str = "https://qxcaptcha.fcm.org.co/api.php";
+
+/// Stands in for both SIMIT endpoints: the proof-of-work question service and the lookup.
+/// Every lookup must carry a valid solution to the last question handed out.
 #[derive(Default)]
 struct FakeSimit {
     /// Per plate, a queue of responses; the last one repeats.
     responses: Mutex<HashMap<String, Vec<Result<HttpResponse, TransportError>>>>,
+    /// Queue for the question service; empty means always `question.json`.
+    questions: Mutex<Vec<Result<HttpResponse, TransportError>>>,
+    question_calls: Mutex<usize>,
     calls: Mutex<Vec<String>>,
 }
 
@@ -31,16 +38,50 @@ impl FakeSimit {
     fn set(&self, plate: &str, r: Vec<Result<HttpResponse, TransportError>>) {
         self.responses.lock().unwrap().insert(plate.into(), r);
     }
+    fn set_questions(&self, r: Vec<Result<HttpResponse, TransportError>>) {
+        *self.questions.lock().unwrap() = r;
+    }
     fn calls(&self) -> usize {
         self.calls.lock().unwrap().len()
     }
+    fn question_calls(&self) -> usize {
+        *self.question_calls.lock().unwrap()
+    }
+}
+
+fn assert_valid_proof(body: &serde_json::Value) {
+    let dto = &body["reCaptchaDTO"];
+    assert_eq!(dto["consumidor"], "1");
+    let list: Vec<serde_json::Value> =
+        serde_json::from_str(dto["response"].as_str().expect("response is a JSON string")).unwrap();
+    assert_eq!(list.len(), 1);
+    let s = sappa_core::simit::pow::Solution {
+        question: list[0]["question"].as_str().unwrap().into(),
+        time: list[0]["time"].as_i64().unwrap(),
+        nonce: list[0]["nonce"].as_u64().unwrap(),
+    };
+    assert_eq!(s.question, "51105c0550b068e4620513eea19d07a3");
+    assert!(sappa_core::simit::pow::verify(&s), "invalid proof of work");
 }
 
 impl HttpTransport for FakeSimit {
     fn send(&self, request: HttpRequest) -> Result<HttpResponse, TransportError> {
         assert!(request.url.starts_with("https://"));
         assert_eq!(request.method, "POST");
-        let body: serde_json::Value = serde_json::from_slice(&request.body.unwrap()).unwrap();
+        let raw = request.body.unwrap();
+        if request.url == CAPTCHA_URL {
+            let text = String::from_utf8(raw).unwrap();
+            assert!(text.contains("name=\"endpoint\"\r\n\r\nquestion\r\n"));
+            *self.question_calls.lock().unwrap() += 1;
+            let mut q = self.questions.lock().unwrap();
+            return match q.len() {
+                0 => ok("question.json"),
+                1 => q[0].clone(),
+                _ => q.remove(0),
+            };
+        }
+        let body: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+        assert_valid_proof(&body);
         let plate = body["filtro"].as_str().unwrap().to_string();
         self.calls.lock().unwrap().push(plate.clone());
         let mut map = self.responses.lock().unwrap();
@@ -335,6 +376,80 @@ fn captcha_blocks_and_stops_the_run() {
 }
 
 #[test]
+fn every_lookup_solves_a_fresh_question() {
+    let e = env();
+    for p in ["AAA111", "BBB222"] {
+        e.core
+            .add_vehicle(p.into(), VehicleKind::Car, None, NOW)
+            .unwrap();
+        e.simit.set(p, vec![ok("no_fines.json")]);
+    }
+    let r = e
+        .core
+        .run_check(NOW, CheckTrigger::Scheduled, BUDGET)
+        .unwrap();
+    assert_eq!(r.result, RunResult::Ok);
+    // The fake transport rejects any lookup without a valid proof for the question it served.
+    assert_eq!((e.simit.question_calls(), e.simit.calls()), (2, 2));
+}
+
+#[test]
+fn captcha_service_failures() {
+    let e = env();
+    e.core
+        .add_vehicle("AAA111".into(), VehicleKind::Car, None, NOW)
+        .unwrap();
+    e.simit.set("AAA111", vec![ok("no_fines.json")]);
+
+    // The service refuses: treated as a block, and SIMIT itself is never asked.
+    e.simit.set_questions(vec![Ok(HttpResponse {
+        status: 200,
+        body: br#"{"error":true,"data":null}"#.to_vec(),
+    })]);
+    let r = e.core.run_check(NOW, CheckTrigger::Manual, BUDGET).unwrap();
+    assert_eq!(
+        (r.result, r.error),
+        (RunResult::Blocked, Some(ErrorClass::Blocked))
+    );
+    assert_eq!(e.simit.calls(), 0);
+
+    e.simit.set_questions(vec![Err(TransportError::Offline)]);
+    let r = e
+        .core
+        .run_check(NOW + 11 * 60, CheckTrigger::Manual, BUDGET)
+        .unwrap();
+    assert_eq!(r.result, RunResult::Offline);
+
+    e.simit.set_questions(vec![Ok(HttpResponse {
+        status: 502,
+        body: vec![],
+    })]);
+    let r = e
+        .core
+        .run_check(NOW + 22 * 60, CheckTrigger::Manual, BUDGET)
+        .unwrap();
+    assert_eq!(
+        (r.error, r.outcomes[0].http_status),
+        (Some(ErrorClass::Http), Some(502))
+    );
+
+    e.simit.set_questions(vec![ok("unexpected_shape.json")]);
+    let r = e
+        .core
+        .run_check(NOW + 33 * 60, CheckTrigger::Manual, BUDGET)
+        .unwrap();
+    assert_eq!(r.error, Some(ErrorClass::Parse));
+
+    e.simit.set_questions(vec![]);
+    let r = e
+        .core
+        .run_check(NOW + 44 * 60, CheckTrigger::Manual, BUDGET)
+        .unwrap();
+    assert_eq!(r.result, RunResult::Ok);
+    assert_eq!(e.simit.calls(), 1);
+}
+
+#[test]
 fn error_classes() {
     let e = env();
     e.core
@@ -606,6 +721,12 @@ fn interrupted_run_is_closed_and_reopen_keeps_data() {
 fn rejects_plain_http() {
     let mut cfg = default_config("/tmp/never.sqlite".into(), "t".into());
     cfg.simit_base_url = Some("http://example.com".into());
+    assert!(matches!(
+        SappaCore::new(cfg, Arc::new(FakeSimit::default())),
+        Err(CoreError::Config { .. })
+    ));
+    let mut cfg = default_config("/tmp/never.sqlite".into(), "t".into());
+    cfg.captcha_url = Some("http://example.com/api.php".into());
     assert!(matches!(
         SappaCore::new(cfg, Arc::new(FakeSimit::default())),
         Err(CoreError::Config { .. })

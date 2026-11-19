@@ -30,6 +30,10 @@ fastrand = "2"
 [dev-dependencies]
 tempfile = "3"
 
+# The proof-of-work search hashes up to ~1M times; keep it fast in debug and test builds too.
+[profile.dev.package.sha2]
+opt-level = 3
+
 [profile.release]
 opt-level = "s"
 lto = true

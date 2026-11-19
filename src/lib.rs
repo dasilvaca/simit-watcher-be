@@ -54,6 +54,10 @@ pub struct CoreConfig {
     pub db_path: String,
     /// `None` uses the default SIMIT host. Must be https.
     pub simit_base_url: Option<String>,
+    /// `None` uses SIMIT's proof-of-work service. Must be https.
+    pub captcha_url: Option<String>,
+    /// Proof-of-work solutions per lookup; 0 uses the page's default (1).
+    pub captcha_difficulty: u32,
     pub user_agent: String,
     pub http_timeout_ms: u32,
     pub jitter_min_ms: u32,
@@ -68,6 +72,8 @@ pub fn default_config(db_path: String, user_agent: String) -> CoreConfig {
     CoreConfig {
         db_path,
         simit_base_url: None,
+        captcha_url: None,
+        captcha_difficulty: 0,
         user_agent,
         http_timeout_ms: 10_000,
         jitter_min_ms: 400,
@@ -197,11 +203,19 @@ impl SappaCore {
             .simit_base_url
             .clone()
             .unwrap_or_else(|| simit::DEFAULT_BASE_URL.into());
-        if !base.starts_with("https://") {
+        let captcha_url = config
+            .captcha_url
+            .clone()
+            .unwrap_or_else(|| simit::DEFAULT_CAPTCHA_URL.into());
+        if !base.starts_with("https://") || !captcha_url.starts_with("https://") {
             return Err(CoreError::Config {
-                detail: "simit_base_url must be https".into(),
+                detail: "simit_base_url and captcha_url must be https".into(),
             });
         }
+        let difficulty = match config.captcha_difficulty {
+            0 => simit::DEFAULT_CAPTCHA_DIFFICULTY,
+            d => d.min(5),
+        };
         let db_path = PathBuf::from(&config.db_path);
         let conn = open_migrated(&db_path)?;
         Ok(Arc::new(Self {
@@ -211,6 +225,8 @@ impl SappaCore {
             client: simit::SimitClient::new(
                 transport,
                 base,
+                captcha_url,
+                difficulty,
                 config.user_agent,
                 config.http_timeout_ms,
             ),

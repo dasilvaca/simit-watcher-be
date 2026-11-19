@@ -126,12 +126,12 @@ pub fn run(
             break;
         }
 
-        let mut result = client.lookup(&t.plate);
+        let mut result = client.lookup(&t.plate, now + (budget.elapsed_ms() / 1000) as i64);
         for backoff in &cfg.retry_backoff_ms {
             match &result {
                 Err(e) if e.retryable() && budget.left_ms() > backoff + cfg.min_plate_budget_ms => {
                     sleep_ms(*backoff);
-                    result = client.lookup(&t.plate);
+                    result = client.lookup(&t.plate, now + (budget.elapsed_ms() / 1000) as i64);
                 }
                 _ => break,
             }
